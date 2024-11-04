@@ -1,8 +1,8 @@
 import torch
 from transformers import WhisperProcessor, WhisperForConditionalGeneration
 
-from inference import whisper_inference
-from audio import get_audio
+from build_dataset.inference import whisper_inference
+from build_dataset.audio import get_audio
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Device:", device)
