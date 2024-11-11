@@ -16,7 +16,7 @@ from miditok import MIDILike, TokenizerConfig
 from pathlib import Path
 
 # TODO: Darin - you may want to 'chime' in here, as I'm 'tone-deaf' to music data.
-config = TokenizerConfig(num_velocities=16, use_chords=True, use_programs=True, use_durations=True)
+config = TokenizerConfig(num_velocities=16, use_chords=True, use_programs=True, use_durations=True, use_time_signatures=True, use_pitch_bends=True, use_rests=True, use_tempo = True, use_sustain_pedals = True)
 tokenizer = MIDILike(config)
 
 midi_examples = [str(x) for x in Path("midi/").rglob("*.mid")]
