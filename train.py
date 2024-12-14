@@ -1,12 +1,13 @@
 from model_utils import *
 
+
 def main():
     # Paths
     train_audio_dir = "synthetic_data/train"
     train_midi_dir = "synthetic_data/train"
     val_audio_dir = "synthetic_data/test"
     val_midi_dir = "synthetic_data/test"
-    checkpoint_path = "checkpoints/model_epoch_5.pt"  # Update as needed
+    checkpoint_path = "checkpoints/model_epoch_12.pt"  # Update as needed
 
     # Initialize tokenizer and feature extractor
     tokenizer = initialize_tokenizer()
@@ -16,7 +17,7 @@ def main():
     model = WhisperREMIModel(
         tokenizer=tokenizer,
         feature_extractor=feature_extractor,
-        checkpoint_path=checkpoint_path
+        checkpoint_path=checkpoint_path,
     )
 
     # Create data loaders
@@ -32,7 +33,7 @@ def main():
         midi_dir=val_midi_dir,
         tokenizer=tokenizer,
         feature_extractor=feature_extractor,
-        batch_size=4
+        batch_size=8
     )
 
     # Optimizer
@@ -43,9 +44,11 @@ def main():
         train_loader=train_loader,
         val_loader=val_loader,
         optimizer=optimizer,
-        num_epochs=5,
-        log_file="training_log.txt"
+        num_epochs=100,
+        log_file="training_log.txt",
+        eval_every=1e6,
     )
+
 
 if __name__ == "__main__":
     main()

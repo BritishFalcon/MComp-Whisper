@@ -9,9 +9,9 @@ from model_utils import (
 
 def main():
     # Paths
-    audio_dir = "synthetic_data/train"
-    midi_dir = "synthetic_data/train"
-    checkpoint_path = "checkpoints/model_epoch_5.pt"  # Update as needed
+    audio_dir = "synthetic_data/test"
+    midi_dir = "synthetic_data/test"
+    checkpoint_path = "checkpoints/model_epoch_4.pt"  # Update as needed
 
     # Initialize tokenizer and feature extractor
     tokenizer = initialize_tokenizer()
@@ -31,7 +31,7 @@ def main():
         tokenizer=tokenizer,
         feature_extractor=feature_extractor,
         batch_size=4,  # Adjust batch size as needed
-        shuffle=False
+        shuffle=True
     )
 
     # Process each batch
@@ -45,11 +45,18 @@ def main():
         # Perform prediction for the entire batch
         for i in range(input_features.size(0)):
             input_mel = input_features[i]
-            prediction = model.predict(input_mel)
+            prediction = model.predict(input_mel, num_beams=10)
             label = labels[i].tolist()
             print(f"File: {file_names[i]}")
             print("Predicted Token IDs:", prediction)
+            print("Predicted (decode):", tokenizer.decode([prediction]))
             print("Target Token IDs:", label)
+            print("Target (decode):", tokenizer.decode([label]))
+            print()
+
+            # Convert back to midi
+            midi = tokenizer.decode([prediction])
+            midi.dump_midi(f"output/{file_names[i]}.mid")
 
         break  # Remove or adjust this as needed
 

@@ -8,6 +8,7 @@ from torch import nn
 from tqdm import tqdm
 import os
 import json
+import torch.nn.functional as F
 
 
 class MusicDataset(Dataset):
@@ -41,13 +42,16 @@ class MusicDataset(Dataset):
             return_tensors="pt"
         ).input_features[0].squeeze(0)
         tokens = self.tokenizer.encode(midi_path)
+
+        # I don't know why but depending on the config, this is a list of len(1)
+        tokens = tokens[0]
+
         target_ids = [self.tokenizer["BOS_None"]] + tokens.ids + [self.tokenizer["EOS_None"]]
         return {
             "input_mel": mel,
             "target_ids": target_ids,
             "file_name": audio_path.name  # Include the file name
         }
-
 
 
 def CustomCollate(batch):
@@ -118,8 +122,13 @@ class WhisperREMIModel:
 
         # Freeze parameters except decoder and lm_head
         for name, param in self.model.named_parameters():
-            if "decoder" not in name and "lm_head" not in name:
+            if "encoder" in name:
                 param.requires_grad = False
+
+            for layer in ["28", "29", "30", "31"]:
+                if layer in name:
+                    print("Unfreezing...", name)
+                    param.requires_grad = True
 
         # Load checkpoint if provided
         if checkpoint_path and Path(checkpoint_path).exists():
@@ -134,10 +143,11 @@ class WhisperREMIModel:
         torch.save(self.model.state_dict(), save_path)
         print(f"Saved model checkpoint to {save_path}")
 
-    def get_optimizer(self, lr=1e-4):
+    def get_optimizer(self, lr=1e-4, weight_decay=1e-2):
         return torch.optim.AdamW(
             filter(lambda p: p.requires_grad, self.model.parameters()),
-            lr=lr
+            lr=lr,
+            weight_decay=weight_decay,
         )
 
     def train(
@@ -161,7 +171,7 @@ class WhisperREMIModel:
 
         for epoch in range(num_epochs):
             total_train_loss = 0.0
-            progress_bar = tqdm(train_loader, desc=f"Epoch {epoch + 1}", unit="batch")
+            progress_bar = tqdm(train_loader, desc=f"Epoch {epoch + 1}/{num_epochs}", unit="batch")
 
             # Training loop
             for batch in progress_bar:
@@ -171,7 +181,10 @@ class WhisperREMIModel:
                 input_features = batch["input_features"].to(self.device)
                 labels = batch["labels"].to(self.device)
                 outputs = self.model(input_features=input_features, labels=labels)
-                loss = outputs.loss
+
+                # loss = outputs.loss
+                loss = self.custom_loss(outputs.logits, labels)
+
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -194,20 +207,40 @@ class WhisperREMIModel:
                 val_loss, predictions = self.evaluate(val_loader)
                 with open(log_file, "a") as f:
                     f.write(f"VAL_LOSS Epoch {epoch + 1}: {val_loss:.4f}\n")
-                    # Log predictions in JSON format for easier parsing later
                     f.write(f"VAL_PREDICTIONS Epoch {epoch + 1}: {json.dumps(predictions)}\n")
 
-    def predict(self, input_mel, max_length=100, eos_token_id=None):
+                # Update progress bar with validation loss
+                progress_bar.set_postfix(
+                    train_loss=f"{avg_train_loss:.4f}",
+                    val_loss=f"{val_loss:.4f}"
+                )
+
+            # Print summary for the epoch
+            tqdm.write(f"Epoch {epoch + 1}/{num_epochs} Summary:")
+            tqdm.write(f"  Train Loss: {avg_train_loss:.4f}")
+            if (epoch + 1) % eval_every == 0:
+                tqdm.write(f"  Validation Loss: {val_loss:.4f}")
+
+    # TODO: Consider weighted loss
+    def custom_loss(self, logits, targets, repetition_penalty=0.1):
+        ce_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=self.tokenizer.pad_token_id)
+        batch_size, seq_len, vocab_size = logits.size()
+        probs = F.softmax(logits, dim=-1)
+        token_counts = torch.sum(probs, dim=1)
+        repetition_loss = torch.sum(token_counts ** 2) / (batch_size * seq_len)
+        return ce_loss + repetition_penalty * repetition_loss
+
+    def predict(self, input_mel, max_length=100, num_beams=1):
         self.model.eval()
         with torch.no_grad():
             input_mel = input_mel.to(self.device).unsqueeze(0)  # Add batch dimension
-            if eos_token_id is None:
-                eos_token_id = self.tokenizer.eos_token_id
+            eos_token_id = self.tokenizer["EOS_None"]
             outputs = self.model.generate(
                 input_features=input_mel,
                 max_length=max_length,
                 eos_token_id=eos_token_id,
-                early_stopping=True
+                early_stopping=True,
+                num_beams=num_beams,
             )
             return outputs[0].tolist()
 
@@ -241,16 +274,42 @@ class WhisperREMIModel:
 
 
 def initialize_tokenizer():
+
+    if os.path.exists("tokenizer.pkl"):
+        tokenizer = torch.load("tokenizer.pkl")
+        return tokenizer
+
+    """
     tokenizer_config = TokenizerConfig(special_tokens=["PAD_None", "BOS_None", "EOS_None", "MASK_None"],
-                             num_velocities=16, use_chords=True, use_programs=True, use_durations=True,
-                             use_time_signatures=True, use_pitch_bends=True, use_rests=True, use_tempo=True,
-                             use_sustain_pedals=True)
+                                       num_velocities=16, use_chords=True, use_programs=True, use_durations=True,
+                                       use_time_signatures=True, use_pitch_bends=True, use_rests=True, use_tempo=True,
+                                       use_sustain_pedals=True)
+    """
+
+    # Temporary simplification
+    tokenizer_config = TokenizerConfig(
+        special_tokens=["PAD_None", "BOS_None", "EOS_None", "MASK_None"],
+        num_velocities=8,
+        use_chords=False,
+        use_programs=False,
+        use_durations=True,
+        use_time_signatures=False,
+        use_pitch_bends=False,
+        use_rests=False,
+        use_tempo=False,
+        use_sustain_pedals=False
+    )
+
     tokenizer = REMI(tokenizer_config)
+    train_midis = list(Path("synthetic_data/train").glob("*.mid"))
+    tokenizer.train(vocab_size=300, model="BPE", files_paths=train_midis)
+    torch.save(tokenizer, "tokenizer.pkl")
+
     print("Special Token IDs:")
     print(f"BOS: {tokenizer['BOS_None']}")
     print(f"EOS: {tokenizer['EOS_None']}")
-    print(f"PAD: {tokenizer.pad_token_id}")
     print(f"MASK: {tokenizer['MASK_None']}")
+    print(f"PAD: {tokenizer['PAD_None']}")
     return tokenizer
 
 
