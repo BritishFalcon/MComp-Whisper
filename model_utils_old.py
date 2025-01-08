@@ -120,6 +120,28 @@ class WhisperREMIModel:
         nn.init.xavier_uniform_(self.model.lm_head.weight)
         self.model.to(self.device)
 
+        """
+        # Freeze parameters except decoder and lm_head
+        for name, param in self.model.named_parameters():
+            if name.startswith("model.encoder"):
+
+                param.requires_grad = False
+
+                for layer in ["28", "29", "30", "31", "model.encoder.layer_norm"]:
+                    if layer in name:
+                        param.requires_grad = True
+                        break
+
+                if param.requires_grad:
+                    print("Unfreezing...", name)
+                else:
+                    print("Freezing...", name)
+
+            else:
+                param.requires_grad = True
+                print("Unfreezing...", name)
+        """
+
         # Freeze parameters except decoder and lm_head
         for name, param in self.model.named_parameters():
             if "encoder" in name:
@@ -207,7 +229,7 @@ class WhisperREMIModel:
                 val_loss, predictions = self.evaluate(val_loader)
                 with open(log_file, "a") as f:
                     f.write(f"VAL_LOSS Epoch {epoch + 1}: {val_loss:.4f}\n")
-                    f.write(f"VAL_PREDICTIONS Epoch {epoch + 1}: {json.dumps(predictions)}\n")
+                    # f.write(f"VAL_PREDICTIONS Epoch {epoch + 1}: {json.dumps(predictions)}\n")
 
                 # Update progress bar with validation loss
                 progress_bar.set_postfix(

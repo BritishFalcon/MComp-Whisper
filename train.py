@@ -1,5 +1,10 @@
 from model_utils import *
 
+# DONE: Run with the new startwith method of freezing
+# TODO: Run with decoder-only training
+# TODO: Explore following decoder-only
+# TODO: Run on polyphonic data
+
 
 def main():
     # Paths
@@ -7,7 +12,7 @@ def main():
     train_midi_dir = "synthetic_data/train"
     val_audio_dir = "synthetic_data/test"
     val_midi_dir = "synthetic_data/test"
-    checkpoint_path = "checkpoints/model_epoch_12.pt"  # Update as needed
+    checkpoint_path = "checkpoints/model_epoch_19.pt"  # Update as needed
 
     # Initialize tokenizer and feature extractor
     tokenizer = initialize_tokenizer()
@@ -46,10 +51,9 @@ def main():
         optimizer=optimizer,
         num_epochs=100,
         log_file="training_log.txt",
-        eval_every=1e6,
+        eval_every=1,
     )
 
 
 if __name__ == "__main__":
     main()
-

@@ -11,7 +11,7 @@ def main():
     # Paths
     audio_dir = "synthetic_data/test"
     midi_dir = "synthetic_data/test"
-    checkpoint_path = "checkpoints/model_epoch_4.pt"  # Update as needed
+    checkpoint_path = "checkpoints/model_epoch_2.pt"  # Update as needed
 
     # Initialize tokenizer and feature extractor
     tokenizer = initialize_tokenizer()
