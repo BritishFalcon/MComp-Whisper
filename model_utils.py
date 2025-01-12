@@ -120,37 +120,32 @@ class WhisperREMIModel:
         nn.init.xavier_uniform_(self.model.lm_head.weight)
         self.model.to(self.device)
 
-        """
-        # Freeze parameters except decoder and lm_head
+        # Improved version using startswith
         for name, param in self.model.named_parameters():
-            if name.startswith("model.encoder"):
-
+            if name.startswith("lm_head"):
+                param.requires_grad = True
+                print("Unfreezing...", name)
+            elif name.startswith("proj_out"):
+                param.requires_grad = True
+                print("Unfreezing...", name)
+            elif "encoder.layer_norm" in name:
+                param.requires_grad = True
+                print("Unfreezing...", name)
+            elif name.startswith("model.decoder"):
+                param.requires_grad = True
+                print("Unfreezing...", name)
+            else:
                 param.requires_grad = False
 
-                for layer in ["28", "29", "30", "31", "model.encoder.layer_norm"]:
+                for layer in ["28", "29", "30", "31", "encoder.layer_norm"]:
                     if layer in name:
                         param.requires_grad = True
-                        break
 
                 if param.requires_grad:
                     print("Unfreezing...", name)
                 else:
                     print("Freezing...", name)
 
-            else:
-                param.requires_grad = True
-                print("Unfreezing...", name)
-        """
-
-        # Freeze parameters except decoder and lm_head
-        for name, param in self.model.named_parameters():
-            if "encoder" in name:
-                param.requires_grad = False
-
-            for layer in ["28", "29", "30", "31"]:
-                if layer in name:
-                    print("Unfreezing...", name)
-                    param.requires_grad = True
 
         # Load checkpoint if provided
         if checkpoint_path and Path(checkpoint_path).exists():
@@ -202,7 +197,12 @@ class WhisperREMIModel:
 
                 input_features = batch["input_features"].to(self.device)
                 labels = batch["labels"].to(self.device)
-                outputs = self.model(input_features=input_features, labels=labels)
+
+                try:
+                    outputs = self.model(input_features=input_features, labels=labels)
+                except ValueError:
+                    print("Skipping batch due to ValueError")
+                    continue
 
                 # loss = outputs.loss
                 loss = self.custom_loss(outputs.logits, labels)
@@ -244,7 +244,7 @@ class WhisperREMIModel:
                 tqdm.write(f"  Validation Loss: {val_loss:.4f}")
 
     # TODO: Consider weighted loss
-    def custom_loss(self, logits, targets, repetition_penalty=0.1):
+    def custom_loss(self, logits, targets, repetition_penalty=0):
         ce_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=self.tokenizer.pad_token_id)
         batch_size, seq_len, vocab_size = logits.size()
         probs = F.softmax(logits, dim=-1)
@@ -278,10 +278,17 @@ class WhisperREMIModel:
 
                 input_features = batch["input_features"].to(self.device)
                 labels = batch["labels"].to(self.device)
-                outputs = self.model(input_features=input_features, labels=labels)
+
+                try:
+                    outputs = self.model(input_features=input_features, labels=labels)
+                except ValueError:
+                    print("Skipping batch due to ValueError")
+                    continue
+
                 loss = outputs.loss
                 total_val_loss += loss.item()
 
+                """
                 # Collect predictions for logging
                 preds = self.model.generate(input_features=input_features)
                 for pred, label, file_name in zip(preds, labels, batch["file_names"]):
@@ -290,6 +297,7 @@ class WhisperREMIModel:
                         "predicted_ids": pred.tolist(),
                         "target_ids": label.tolist()
                     })
+                """
 
         avg_val_loss = total_val_loss / len(val_loader)
         return avg_val_loss, predictions
@@ -309,6 +317,7 @@ def initialize_tokenizer():
     """
 
     # Temporary simplification
+    """
     tokenizer_config = TokenizerConfig(
         special_tokens=["PAD_None", "BOS_None", "EOS_None", "MASK_None"],
         num_velocities=8,
@@ -321,10 +330,25 @@ def initialize_tokenizer():
         use_tempo=False,
         use_sustain_pedals=False
     )
+    """
+
+    # Polyphonic version
+    tokenizer_config = TokenizerConfig(
+        special_tokens=["PAD_None", "BOS_None", "EOS_None", "MASK_None"],
+        num_velocities=16,
+        use_chords=True,
+        use_programs=False,
+        use_durations=True,
+        use_time_signatures=False,
+        use_pitch_bends=False,
+        use_rests=False,
+        use_tempo=False,
+        use_sustain_pedals=False
+    )
 
     tokenizer = REMI(tokenizer_config)
     train_midis = list(Path("synthetic_data/train").glob("*.mid"))
-    tokenizer.train(vocab_size=300, model="BPE", files_paths=train_midis)
+    tokenizer.train(vocab_size=400, model="BPE", files_paths=train_midis)
     torch.save(tokenizer, "tokenizer.pkl")
 
     print("Special Token IDs:")
@@ -361,4 +385,3 @@ def create_validation_loader(
         sample_rate=sample_rate,
         shuffle=False
     )
-

@@ -1,18 +1,18 @@
 from model_utils import *
 
 # DONE: Run with the new startwith method of freezing
-# TODO: Run with decoder-only training
-# TODO: Explore following decoder-only
+# DONE: Run with decoder-only training
+# PARTIAL: Explore following decoder-only
 # TODO: Run on polyphonic data
 
 
 def main():
     # Paths
-    train_audio_dir = "synthetic_data/train"
-    train_midi_dir = "synthetic_data/train"
-    val_audio_dir = "synthetic_data/test"
-    val_midi_dir = "synthetic_data/test"
-    checkpoint_path = "checkpoints/model_epoch_19.pt"  # Update as needed
+    train_audio_dir = "real_data/train"
+    train_midi_dir = "real_data/train"
+    val_audio_dir = "real_data/test"
+    val_midi_dir = "real_data/test"
+    checkpoint_path = None  # Update as needed
 
     # Initialize tokenizer and feature extractor
     tokenizer = initialize_tokenizer()
