@@ -1,5 +1,3 @@
-# evaluate.py
-
 from model_utils import (
     initialize_tokenizer,
     initialize_feature_extractor,
