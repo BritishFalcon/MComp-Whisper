@@ -3,7 +3,8 @@ import mir_eval
 import pandas as pd
 import numpy as np
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
-
+import os
+import shutil
 
 def trim_long(onsets_x, notes_x, onsets_y, notes_y):
     # Determine the length of the shortest list
@@ -58,8 +59,7 @@ def get_tempo(df):
 
 def note_to_freq(note):
     return 440 * 2**((note - 69) / 12)
-csv_x = pm.midi_to_csv("Boomtown_Rats_-_I_Dont_Like_Mondays.mid")
-csv_y = pm.midi_to_csv("The Cult - She Sells Sanctuary.mid")
+
 
 
 def read_format_csv(path):
@@ -77,7 +77,10 @@ def read_format_csv(path):
             data[i].append('None')
 
     df = pd.DataFrame(data)
-    df.columns = ['track', 'time', 'event', 'channel', 'note', 'velocity', '6']
+    if max_columns == 7:
+        df.columns = ['track', 'time', 'event', 'channel', 'note', 'velocity', '6']
+    elif max_columns == 6:
+        df.columns = ['track', 'time', 'event', 'channel', 'note', 'velocity']
     return df
 
 def get_onsets(df):
@@ -118,30 +121,110 @@ def note_eval_basic(notes_x, notes_y):
     summary = {"accuracy score":acc, "f1-score":f1, "precision score": precision, "recall": recall}
     return summary
 
-with open("example_converted.csv", "w") as f:
-    f.writelines(csv_x)
-with open("example_converted1.csv", "w") as f:
-    f.writelines(csv_y)
 
-df_x = read_format_csv("example_converted.csv")
-df_y = read_format_csv("example_converted1.csv")
-
-
-notes_x = get_notes(df_x)
-onsets_x = get_onsets(df_x)
-onsets_x, notes_x = sort_onsets_with_notes(onsets_x, notes_x)
+def rename_file(filename):
+    # Check if the filename ends with '.wav.mid'
+    if filename.endswith('.wav.mid'):
+        # Remove '.wav' and prepend 's' to the base name
+        new_filename = 's' + filename[:-8] + '.mid'  # Remove the last 8 characters ('.wav.mid')
+        return new_filename
+    else:
+        # If the file doesn't match the expected format, return the original filename
+        return filename
 
 
-notes_y = get_notes(df_y)
+folder_x = 'C:\\Users\\darlu\\PycharmProjects\\MIR eval\\input pred'
+folder_y = 'C:\\Users\\darlu\\PycharmProjects\\MIR eval\\input truth'
 
-onsets_y = get_onsets(df_y)
-onsets_y, notes_y = sort_onsets_with_notes(onsets_y, notes_y)
-onsets_x, notes_x, onsets_y, notes_y = trim_long(onsets_x, notes_x, onsets_y, notes_y)
+f_measure_onsets = []
+precision_onsets = []
+recall_onsets = []
+accuracy_notes = []
+f1_notes = []
+precision_notes = []
+recall_notes = []
 
-acc = accuracy_score(notes_x, notes_y)
-print(note_eval_basic(notes_x, notes_y))
+files_x = os.listdir(folder_x)
 
-print(mir_eval.onset.evaluate(onsets_x, onsets_y))
+
+for filename in files_x:
+    file_x_path = os.path.join(folder_x, filename)
+    filename = rename_file(filename)
+    print(filename)
+    file_y_path = os.path.join(folder_y, filename)
+
+    os.makedirs("tempcsvs", exist_ok=True)
+    if os.path.exists(file_y_path):
+        print('yes')
+        csv_x = pm.midi_to_csv(file_x_path)
+        csv_y = pm.midi_to_csv(file_y_path)
+
+
+
+
+
+        with open("tempcsvs/csv_x.csv", "w") as f:
+            f.writelines(csv_x)
+        with open("tempcsvs/csv_y.csv", "w") as f:
+            f.writelines(csv_y)
+
+    #with open("example_converted.csv", "w") as f:
+    #    f.writelines(csv_x)
+    #with open("example_converted1.csv", "w") as f:
+    #    f.writelines(csv_y)
+
+        df_x = read_format_csv("tempcsvs/csv_x.csv")
+        df_y = read_format_csv("tempcsvs/csv_y.csv")
+
+
+        notes_x = get_notes(df_x)
+        onsets_x = get_onsets(df_x)
+        onsets_x, notes_x = sort_onsets_with_notes(onsets_x, notes_x)
+
+
+        notes_y = get_notes(df_y)
+
+        onsets_y = get_onsets(df_y)
+        onsets_y, notes_y = sort_onsets_with_notes(onsets_y, notes_y)
+        onsets_x, notes_x, onsets_y, notes_y = trim_long(onsets_x, notes_x, onsets_y, notes_y)
+
+        acc = accuracy_score(notes_x, notes_y)
+        result_notes = note_eval_basic(notes_x, notes_y)
+        keys_note = list(result_notes)
+        accuracy_notes.append(result_notes[keys_note[0]])
+        f1_notes.append(result_notes[keys_note[1]])
+        precision_notes.append(result_notes[keys_note[2]])
+        recall_notes.append(result_notes[keys_note[3]])
+
+        result_onsets = mir_eval.onset.evaluate(onsets_x, onsets_y)
+        keys_onset = list(result_onsets)
+        f_measure_onsets.append(result_onsets[keys_onset[0]])
+        precision_onsets.append(result_onsets[keys_onset[1]])
+        recall_onsets.append(result_onsets[keys_onset[2]])
+
+
+    shutil.rmtree('tempcsvs')
+
+mean_f_measure_onsets = np.mean(f_measure_onsets)
+mean_precision_onsets = np.mean(precision_onsets)
+mean_recall_onsets = np.mean(recall_onsets)
+
+mean_accuracy_notes = np.mean(accuracy_notes)
+mean_f1_notes = np.mean(f1_notes)
+mean_precision_notes = np.mean(precision_notes)
+mean_recall_notes = np.mean(recall_notes)
+
+
+print("\n--- Note Onset Evaluation ---")
+print(f"Mean F-Measure (Onsets): {mean_f_measure_onsets:.4f}")
+print(f"Mean Precision (Onsets): {mean_precision_onsets:.4f}")
+print(f"Mean Recall (Onsets): {mean_recall_onsets:.4f}")
+
+print("\n--- Note Evaluation ---")
+print(f"Mean Accuracy (Notes): {mean_accuracy_notes:.4f}")
+print(f"Mean F1-Score (Notes): {mean_f1_notes:.4f}")
+print(f"Mean Precision (Notes): {mean_precision_notes:.4f}")
+print(f"Mean Recall (Notes): {mean_recall_notes:.4f}")
 
 
 
