@@ -6,7 +6,7 @@ from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_sc
 import os
 import shutil
 
-def trim_long(onsets_x, notes_x, onsets_y, notes_y):
+def trim_long(onsets_x, notes_x, onsets_y, notes_y): # matches lengths to avoid errors
     # Determine the length of the shortest list
     min_length = min(len(onsets_x), len(onsets_y), len(notes_x), len(notes_y))
 
@@ -18,7 +18,7 @@ def trim_long(onsets_x, notes_x, onsets_y, notes_y):
 
     return onsets_x, notes_x, onsets_y, notes_y
 
-def sort_onsets_with_notes(onsets, notes):
+def sort_onsets_with_notes(onsets, notes): # sorts both notes and onsets into lists based on the order they occur
     # Combine onsets and notes into a list of tuples (onset, note)
     onsets_notes = list(zip(onsets, notes))
 
@@ -51,21 +51,22 @@ def get_tempo(df):
     #finds all tempo values and uses
     tempo_index = df[df['event'] == 'Tempo'].first_valid_index()
     tempo = int(df.iloc[tempo_index]['channel'])
-
+    
     ppqn_index = df[df['event'] == 'Header'].first_valid_index()
     ppqn = int(df.iloc[ppqn_index]['velocity'])
     return tempo, ppqn
 
 
 def note_to_freq(note):
+    #not needed
     return 440 * 2**((note - 69) / 12)
 
 
 
-def read_format_csv(path):
+def read_format_csv(path): # reads and formats generated CSVs into a form suitable for working with
     data = []
     max_columns = 0
-
+    # reads the CSV and marks each line as a new entry in a list
     with open(path, 'r') as file:
         for line in file:
             row = line.strip().split(', ')
@@ -75,7 +76,7 @@ def read_format_csv(path):
     for i in range(len(data)):
         while len(data[i]) < max_columns:
             data[i].append('None')
-
+    # Converts the list to a dataframe
     df = pd.DataFrame(data)
     if max_columns == 7:
         df.columns = ['track', 'time', 'event', 'channel', 'note', 'velocity', '6']
@@ -83,7 +84,7 @@ def read_format_csv(path):
         df.columns = ['track', 'time', 'event', 'channel', 'note', 'velocity']
     return df
 
-def get_onsets(df):
+def get_onsets(df): # locates all note on events and calculates their timestamp in seconds based on tempo
     selected_rows = df[df['event'] == 'Note_on_c']
     times = selected_rows['time'].astype(int).to_numpy()
     tempo, ppqn = get_tempo(df)
@@ -92,7 +93,7 @@ def get_onsets(df):
     return times
 
 
-def get_offsets(df):
+def get_offsets(df): # locates all note off events and calculates their timestamp in seconds based on tempo
     selected_rows = df[df['event'] == 'Note_off_c']
     times = selected_rows['time'].astype(int).to_numpy()
     tempo, ppqn = get_tempo(df)
@@ -102,7 +103,7 @@ def get_offsets(df):
 
 
 
-def get_notes(df):
+def get_notes(df): # finds the note values for all note one events and converts the MIDI note to a frequency in hz
     selected_rows = df[df['event'] == 'Note_on_c']
     notes = selected_rows['note'].astype(int).to_numpy()
     x_list = []
@@ -113,7 +114,7 @@ def get_notes(df):
     return x_list
 
 
-def note_eval_basic(notes_x, notes_y):
+def note_eval_basic(notes_x, notes_y): # Alternative to MIR.multipitch, calculates metric scores based on exact frequency matches(should be equally accurate as frequency is calculated in a uniform manner
     acc = accuracy_score(notes_x, notes_y)
     f1 = f1_score(notes_x, notes_y, average='micro')
     precision = precision_score(notes_x, notes_y, average='micro')
@@ -123,18 +124,17 @@ def note_eval_basic(notes_x, notes_y):
 
 
 def rename_file(filename):
-    # Check if the filename ends with '.wav.mid'
+    # reformats filenames to ease searching
     if filename.endswith('.wav.mid'):
-        # Remove '.wav' and prepend 's' to the base name
-        new_filename = 's' + filename[:-8] + '.mid'  # Remove the last 8 characters ('.wav.mid')
+        new_filename = 's' + filename[:-8] + '.mid'
         return new_filename
     else:
-        # If the file doesn't match the expected format, return the original filename
         return filename
 
 
 folder_x = 'C:\\Users\\darlu\\PycharmProjects\\MIR eval\\input pred'
 folder_y = 'C:\\Users\\darlu\\PycharmProjects\\MIR eval\\input truth'
+
 
 f_measure_onsets = []
 precision_onsets = []
@@ -146,7 +146,7 @@ recall_notes = []
 
 files_x = os.listdir(folder_x)
 
-
+# iterates through target files
 for filename in files_x:
     file_x_path = os.path.join(folder_x, filename)
     filename = rename_file(filename)
@@ -156,27 +156,26 @@ for filename in files_x:
     os.makedirs("tempcsvs", exist_ok=True)
     if os.path.exists(file_y_path):
         print('yes')
+        #converts MIDIs to CSVs
         csv_x = pm.midi_to_csv(file_x_path)
         csv_y = pm.midi_to_csv(file_y_path)
 
 
 
 
-
+        #temporarily stores the CSV
         with open("tempcsvs/csv_x.csv", "w") as f:
             f.writelines(csv_x)
         with open("tempcsvs/csv_y.csv", "w") as f:
             f.writelines(csv_y)
 
-    #with open("example_converted.csv", "w") as f:
-    #    f.writelines(csv_x)
-    #with open("example_converted1.csv", "w") as f:
-    #    f.writelines(csv_y)
 
+    #    f.writelines(csv_y)
+        # reads and formats the CSV
         df_x = read_format_csv("tempcsvs/csv_x.csv")
         df_y = read_format_csv("tempcsvs/csv_y.csv")
 
-
+        #acquires and sorts notes and onsets
         notes_x = get_notes(df_x)
         onsets_x = get_onsets(df_x)
         onsets_x, notes_x = sort_onsets_with_notes(onsets_x, notes_x)
@@ -186,8 +185,11 @@ for filename in files_x:
 
         onsets_y = get_onsets(df_y)
         onsets_y, notes_y = sort_onsets_with_notes(onsets_y, notes_y)
+        #ensures the two sets are equal length
         onsets_x, notes_x, onsets_y, notes_y = trim_long(onsets_x, notes_x, onsets_y, notes_y)
 
+
+        #calculates scores
         acc = accuracy_score(notes_x, notes_y)
         result_notes = note_eval_basic(notes_x, notes_y)
         keys_note = list(result_notes)
@@ -202,7 +204,7 @@ for filename in files_x:
         precision_onsets.append(result_onsets[keys_onset[1]])
         recall_onsets.append(result_onsets[keys_onset[2]])
 
-
+    # clears temporary folder
     shutil.rmtree('tempcsvs')
 
 mean_f_measure_onsets = np.mean(f_measure_onsets)
@@ -214,7 +216,7 @@ mean_f1_notes = np.mean(f1_notes)
 mean_precision_notes = np.mean(precision_notes)
 mean_recall_notes = np.mean(recall_notes)
 
-
+#Outputs resukts
 print("\n--- Note Onset Evaluation ---")
 print(f"Mean F-Measure (Onsets): {mean_f_measure_onsets:.4f}")
 print(f"Mean Precision (Onsets): {mean_precision_onsets:.4f}")
