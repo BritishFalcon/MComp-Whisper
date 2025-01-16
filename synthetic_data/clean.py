@@ -1,13 +1,7 @@
 import os
 
 def clean_unpaired_files(folder_path):
-    """
-    Cleans up a folder by removing .wav or .mid files that don't have a counterpart with the same name.
 
-    Args:
-        folder_path (str): Path to the folder containing the files.
-    """
-    # Get a list of all files in the folder
     all_files = os.listdir(folder_path)
 
     # Separate files into .wav and .mid sets
@@ -32,5 +26,5 @@ def clean_unpaired_files(folder_path):
     print("Cleanup complete.")
 
 if __name__ == "__main__":
-    folder = "train"  # Adjust the folder name/path if necessary
+    folder = "train"
     clean_unpaired_files(folder)
