@@ -2,30 +2,28 @@ from model_utils import *
 
 # DONE: Run with the new startwith method of freezing
 # DONE: Run with decoder-only training
-# PARTIAL: Explore following decoder-only
-# TODO: Run on polyphonic data
+# DONE: Explore following decoder-only
+# DONE: Run on polyphonic data
 
 
 def main():
-    # Paths
+    
     train_audio_dir = "real_data/train"
     train_midi_dir = "real_data/train"
     val_audio_dir = "real_data/test"
     val_midi_dir = "real_data/test"
     checkpoint_path = None  # Update as needed
 
-    # Initialize tokenizer and feature extractor
     tokenizer = initialize_tokenizer()
     feature_extractor = initialize_feature_extractor()
 
-    # Initialize model
     model = WhisperREMIModel(
         tokenizer=tokenizer,
         feature_extractor=feature_extractor,
         checkpoint_path=checkpoint_path,
     )
 
-    # Create data loaders
+    # Data loading
     train_loader = create_data_loader(
         audio_dir=train_audio_dir,
         midi_dir=train_midi_dir,
@@ -41,10 +39,10 @@ def main():
         batch_size=8
     )
 
-    # Optimizer
+    # Domain standard but still low learning rate for best chance of convergence
     optimizer = model.get_optimizer(lr=1e-4)
 
-    # Train with validation
+    # Train with validation (something like 1e4 or crazy to prevent eval)
     model.train(
         train_loader=train_loader,
         val_loader=val_loader,
