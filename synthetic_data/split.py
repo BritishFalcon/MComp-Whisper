@@ -11,11 +11,11 @@ test_folder = "test"
 os.makedirs(train_folder, exist_ok=True)
 os.makedirs(test_folder, exist_ok=True)
 
-# Collect all unique filenames (excluding extensions)
+# Collect all unique filenames
 all_files = [os.path.splitext(f)[0] for f in os.listdir(source_folder) if os.path.isfile(os.path.join(source_folder, f))]
-unique_files = list(set(all_files))  # Ensure unique filenames
+unique_files = list(set(all_files))  # Ensure unique
 
-# Shuffle the files for randomness
+# Shuffle the files list for randomness
 random.shuffle(unique_files)
 
 # Split into train and test sets (80/20)
