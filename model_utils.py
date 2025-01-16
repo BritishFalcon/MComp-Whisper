@@ -19,8 +19,11 @@ class MusicDataset(Dataset):
         self.sample_rate = sample_rate
         self.feature_extractor = feature_extractor
 
+        # .wav and .mid files are stored in the same directory, so reach in and pull each out
         audio_files = {f.stem: f for f in self.audio_dir.glob("*.wav")}
         midi_files = {f.stem: f for f in self.midi_dir.glob("*.mid")}
+
+        # Take the intersection to ensure that there is always a example-target pairing
         self.common_files = [
             (audio_files[stem], midi_files[stem])
             for stem in audio_files.keys() & midi_files.keys()
@@ -32,6 +35,8 @@ class MusicDataset(Dataset):
     def __getitem__(self, idx):
         audio_path, midi_path = self.common_files[idx]
         waveform, sr = torchaudio.load(audio_path)
+
+        # Perform pre-processing including resampling and mel-spectrogram
         if sr != self.sample_rate:
             waveform = torchaudio.transforms.Resample(orig_freq=sr, new_freq=self.sample_rate)(waveform)
         if waveform.shape[0] > 1:
@@ -41,16 +46,19 @@ class MusicDataset(Dataset):
             sampling_rate=self.sample_rate,
             return_tensors="pt"
         ).input_features[0].squeeze(0)
+
+        # Convert to tokens ready for the model
         tokens = self.tokenizer.encode(midi_path)
 
         # I don't know why but depending on the config, this is a list of len(1)
         tokens = tokens[0]
 
+        # Wrap with Whisper's expected BOS, EOS tokens
         target_ids = [self.tokenizer["BOS_None"]] + tokens.ids + [self.tokenizer["EOS_None"]]
         return {
             "input_mel": mel,
             "target_ids": target_ids,
-            "file_name": audio_path.name  # Include the file name
+            "file_name": audio_path.name  # Include the file name for later reference
         }
 
 
@@ -66,13 +74,14 @@ def CustomCollate(batch):
     for item in batch:
         mel = item["input_mel"]
         file_names.append(item["file_name"])  # Add file name to the list
-        if mel.shape[1] > max_mel_length:
+        if mel.shape[1] > max_mel_length: # Truncate as required by Whisper
             mel = mel[:, :max_mel_length]
         else:
             pad_length = max_mel_length - mel.shape[1]
             mel = torch.nn.functional.pad(mel, (0, pad_length))
         input_mel.append(mel)
 
+    # Place in torch format
     input_mel = torch.stack(input_mel)
 
     pad_token_id = 0
@@ -112,7 +121,7 @@ class WhisperREMIModel:
         self.config.decoder_start_token_id = self.tokenizer["BOS_None"]
         self.config.mask_token_id = self.tokenizer["MASK_None"]
 
-        # Initialize model
+        # Initialize model including new Tokenizer and head reset
         self.model = WhisperForConditionalGeneration(self.config)
         self.model.model.decoder.embed_tokens = nn.Embedding(len(self.tokenizer), self.config.d_model)
         nn.init.xavier_uniform_(self.model.model.decoder.embed_tokens.weight)
@@ -137,6 +146,7 @@ class WhisperREMIModel:
             else:
                 param.requires_grad = False
 
+                # Upper encoder layers
                 for layer in ["28", "29", "30", "31", "encoder.layer_norm"]:
                     if layer in name:
                         param.requires_grad = True
@@ -205,6 +215,7 @@ class WhisperREMIModel:
                     continue
 
                 # loss = outputs.loss
+                # Custom loss utilising capability for repetition penalty
                 loss = self.custom_loss(outputs.logits, labels)
 
                 optimizer.zero_grad()
@@ -243,7 +254,6 @@ class WhisperREMIModel:
             if (epoch + 1) % eval_every == 0:
                 tqdm.write(f"  Validation Loss: {val_loss:.4f}")
 
-    # TODO: Consider weighted loss
     def custom_loss(self, logits, targets, repetition_penalty=0):
         ce_loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=self.tokenizer.pad_token_id)
         batch_size, seq_len, vocab_size = logits.size()
@@ -288,6 +298,7 @@ class WhisperREMIModel:
                 loss = outputs.loss
                 total_val_loss += loss.item()
 
+                # This section is dis-used.
                 """
                 # Collect predictions for logging
                 preds = self.model.generate(input_features=input_features)
@@ -309,6 +320,7 @@ def initialize_tokenizer():
         tokenizer = torch.load("tokenizer.pkl")
         return tokenizer
 
+    # Originally desired config
     """
     tokenizer_config = TokenizerConfig(special_tokens=["PAD_None", "BOS_None", "EOS_None", "MASK_None"],
                                        num_velocities=16, use_chords=True, use_programs=True, use_durations=True,
@@ -316,8 +328,7 @@ def initialize_tokenizer():
                                        use_sustain_pedals=True)
     """
 
-    # Temporary simplification
-    """
+    # Simplified monophonic config
     tokenizer_config = TokenizerConfig(
         special_tokens=["PAD_None", "BOS_None", "EOS_None", "MASK_None"],
         num_velocities=8,
@@ -330,9 +341,10 @@ def initialize_tokenizer():
         use_tempo=False,
         use_sustain_pedals=False
     )
-    """
+
 
     # Polyphonic version
+    """
     tokenizer_config = TokenizerConfig(
         special_tokens=["PAD_None", "BOS_None", "EOS_None", "MASK_None"],
         num_velocities=16,
@@ -345,10 +357,12 @@ def initialize_tokenizer():
         use_tempo=False,
         use_sustain_pedals=False
     )
+    """
 
+    # Configured for monophonic; vocab used was 400 and real_data for polyphonic
     tokenizer = REMI(tokenizer_config)
     train_midis = list(Path("synthetic_data/train").glob("*.mid"))
-    tokenizer.train(vocab_size=400, model="BPE", files_paths=train_midis)
+    tokenizer.train(vocab_size=300, model="BPE", files_paths=train_midis)
     torch.save(tokenizer, "tokenizer.pkl")
 
     print("Special Token IDs:")
